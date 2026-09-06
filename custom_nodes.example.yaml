@@ -1,0 +1,24 @@
+# 自建节点配置文件 (支持 Hysteria 2 / Vless / Trojan / SS 等)
+# 放在 private/custom_nodes.yaml 中即可生效（会被 .gitignore 保护，不泄漏敏感信息）
+
+# ----------------------------------------------------
+# 格式一：标准 YAML 字典格式（推荐，选项清晰完整）
+# ----------------------------------------------------
+- name: "⚡ 自建-HY2-东京"
+  type: hysteria2
+  server: "tokyo.example.com"          # 节点域名或公网 IP
+  port: 443                            # 端口（或端口跳跃范围如 20000-40000）
+  password: "your_hy2_password"        # Hysteria 2 认证密码
+  sni: "tokyo.example.com"             # TLS SNI 域名（通常与证书域名一致）
+  skip-cert-verify: false              # 自签证书设为 true，Let's Encrypt 等正规证书设为 false
+  alpn:
+    - h3
+  up: "50 Mbps"                        # 可选：客户端最大上传速率
+  down: "200 Mbps"                     # 可选：客户端最大下载速率
+  # obfs: salamander                   # 可选：如果启用了混淆
+  # obfs-password: "your_obfs_pass"    # 可选：混淆密码
+
+# ----------------------------------------------------
+# 格式二：直接使用 hysteria2:// URI 链接（方便一键复制粘贴）
+# ----------------------------------------------------
+# - "hysteria2://password@tokyo.example.com:443/?sni=tokyo.example.com&insecure=0#⚡ 自建-HY2-节点2"

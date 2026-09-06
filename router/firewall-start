@@ -1,0 +1,3 @@
+#!/bin/sh
+# Managed by /Users/ryou/router-mihomo; existing KoolShare entry points preserved.
+/jffs/mihomo/service.sh firewall

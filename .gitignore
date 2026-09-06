@@ -1,0 +1,6 @@
+artifacts/
+build/
+private/
+__pycache__/
+.venv/
+config.env

@@ -1,0 +1,2 @@
+# Main LAN only. Guest networks and Tailscale traffic are not intercepted.
+192.168.50.0/24
