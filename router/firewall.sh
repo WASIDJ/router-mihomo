@@ -3,6 +3,7 @@ set -eu
 BASE=/jffs/mihomo
 IPT=iptables
 SET=mh_clients
+CHN_SET=chnroute
 MARK=0x01000000/0x01000000
 TABLE=110
 PREF=11000
@@ -27,14 +28,43 @@ case "${1:-apply}" in
     done
     while ip rule del pref "$PREF" fwmark "$MARK" table "$TABLE" 2>/dev/null; do :; done
     ip route del local 0.0.0.0/0 dev lo table "$TABLE" 2>/dev/null || true
+    ipset destroy "$SET" 2>/dev/null || true
+    ipset destroy "$CHN_SET" 2>/dev/null || true
+    ipset destroy chn_next 2>/dev/null || true
     exit 0
     ;;
+  update-chnroute)
+    echo "Updating chnroute from https://ispip.clang.cn/all_cn.txt..."
+    tmp_file="/tmp/chnroute_new.txt"
+    if curl -sL --connect-timeout 10 https://ispip.clang.cn/all_cn.txt > "$tmp_file" && [ -s "$tmp_file" ]; then
+      lines=$(wc -l < "$tmp_file")
+      if [ "$lines" -gt 3000 ]; then
+        cp -f "$tmp_file" "$BASE/chnroute.txt"
+        rm -f "$tmp_file"
+        ipset create chn_next hash:net family inet hashsize 8192 maxelem 65536 -exist
+        ipset flush chn_next
+        sed 's/^/add chn_next /' "$BASE/chnroute.txt" | ipset restore
+        ipset swap chn_next "$CHN_SET"
+        ipset destroy chn_next
+        fc flush --if br0 >/dev/null 2>&1 || true
+        echo "chnroute updated successfully ($lines subnets loaded)."
+        exit 0
+      fi
+    fi
+    rm -f "$tmp_file"
+    echo "Failed to update chnroute: invalid download" >&2
+    exit 1
+    ;;
 esac
-modprobe xt_TPROXY
-modprobe xt_socket
-modprobe xt_set
-modprobe ip_set_hash_net
+
+modprobe xt_TPROXY 2>/dev/null || true
+modprobe xt_socket 2>/dev/null || true
+modprobe xt_set 2>/dev/null || true
+modprobe ip_set_hash_net 2>/dev/null || true
+
 ipset create "$SET" hash:net family inet -exist
+ipset create "$CHN_SET" hash:net family inet hashsize 8192 maxelem 65536 -exist
+
 ipset create mh_next hash:net family inet -exist
 ipset flush mh_next
 while read -r client; do
@@ -45,10 +75,23 @@ done < "$BASE/clients.txt"
 ipset swap mh_next "$SET"
 ipset destroy mh_next
 
+# Populate chnroute if file exists and set is currently unpopulated
+if [ -f "$BASE/chnroute.txt" ]; then
+  entries=$(ipset list "$CHN_SET" -t 2>/dev/null | grep 'Number of entries:' | awk '{print $NF}')
+  if [ "${entries:-0}" -lt 1000 ]; then
+    ipset create chn_next hash:net family inet hashsize 8192 maxelem 65536 -exist
+    ipset flush chn_next
+    sed 's/^/add chn_next /' "$BASE/chnroute.txt" | ipset restore
+    ipset swap chn_next "$CHN_SET"
+    ipset destroy chn_next
+  fi
+fi
+
 # A persistent FORWARD guard prevents selected TCP/UDP clients silently
-# falling back to direct when the proxy exits. Management/private LAN bypasses it.
+# falling back to direct when the proxy exits. Management/private LAN and domestic bypass it.
 chain filter MH_GUARD
 for net in $PRIVATE; do $IPT -t filter -A MH_GUARD -d "$net" -j RETURN; done
+$IPT -t filter -A MH_GUARD -m set --match-set "$CHN_SET" dst -j RETURN
 for proto in tcp udp; do
   $IPT -t filter -A MH_GUARD -i br0 -m set --match-set "$SET" src -p "$proto" -j REJECT
 done
@@ -67,19 +110,24 @@ ip route replace local 0.0.0.0/0 dev lo table "$TABLE"
 if ! ip rule show | grep -q '11000:.*fwmark 0x1000000/0x1000000.*lookup 110'; then
   ip rule add pref "$PREF" fwmark "$MARK" table "$TABLE"
 fi
+
 chain mangle MH_ROUTE
 $IPT -t mangle -A MH_ROUTE ! -i br0 -j RETURN
 $IPT -t mangle -A MH_ROUTE -m set ! --match-set "$SET" src -j RETURN
 for proto in tcp udp; do $IPT -t mangle -A MH_ROUTE -p "$proto" --dport 53 -j RETURN; done
 for net in $PRIVATE; do $IPT -t mangle -A MH_ROUTE -d "$net" -j RETURN; done
+# Direct hardware bypass: Domestic traffic directly RETURNs to utilize Broadcom Flow Cache wire-speed acceleration
+$IPT -t mangle -A MH_ROUTE -m set --match-set "$CHN_SET" dst -j RETURN
 for proto in tcp udp; do
   $IPT -t mangle -A MH_ROUTE -p "$proto" -j TPROXY --on-port 7893 --tproxy-mark "$MARK"
 done
 $IPT -t mangle -C PREROUTING -j MH_ROUTE 2>/dev/null || $IPT -t mangle -I PREROUTING 1 -j MH_ROUTE
+
 chain nat MH_DNS
 for proto in tcp udp; do
   $IPT -t nat -A MH_DNS -i br0 -m set --match-set "$SET" src -p "$proto" --dport 53 -j REDIRECT --to-ports 1053
 done
 $IPT -t nat -C PREROUTING -j MH_DNS 2>/dev/null || $IPT -t nat -I PREROUTING 1 -j MH_DNS
+
 # Invalidate cached LAN flows so new policy applies to previously accelerated traffic.
 fc flush --if br0 >/dev/null 2>&1 || true

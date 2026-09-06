@@ -28,14 +28,21 @@ Welcome to `router-mihomo`! This document provides AI coding agents and human de
   - **Invariant**: **NEVER write persistent logs or high-frequency telemetry directly to `/jffs`**.
 
 ### B. Transparent Proxy & Network Routing
-- **DNS Redirection**:
-  - `MH_DNS` in iptables `nat` PREROUTING redirects all UDP/TCP 53 from LAN clients (`mh_clients` ipset) to local port `1053` (Mihomo Fake-IP DNS).
+- **DNS Redirection & Domain Bypass (`fake-ip-filter`)**:
+  - `MH_DNS` in iptables `nat` PREROUTING redirects all UDP/TCP 53 from LAN clients (`mh_clients` ipset) to local port `1053`.
+  - Domestic domains (`+.cn`, `+.baidu.com`, `+.bilibili.com`, `+.qq.com`, etc.) match `fake-ip-filter` and resolve to **real China public IPs** via local nameservers (`223.5.5.5`, `doh.pub`).
+- **L3/L4 Domestic Hardware Direct Bypass (`chnroute` & Broadcom Flow Cache)**:
+  - `MH_ROUTE` and `MH_GUARD` check destination IPs against the `chnroute` ipset (~4,290 China CIDRs, ~215KB RAM).
+  - All domestic traffic executes `-j RETURN` immediately in iptables and bypasses userspace TPROXY completely.
+  - Broadcom BCM4908 Flow Cache (Runner) captures the connection and performs **wire-speed silicon hardware acceleration** (full 1000M throughput at ~0% CPU).
 - **TCP/UDP TPROXY Interception**:
-  - `MH_ROUTE` in iptables `mangle` PREROUTING intercepts LAN TCP and UDP traffic (skipping port 53 and private subnets) and routes via `TPROXY --on-port 7893 --tproxy-mark 0x01000000/0x01000000`.
+  - International / Fake-IP traffic is intercepted via `TPROXY --on-port 7893 --tproxy-mark 0x01000000/0x01000000`.
   - Kernel routing rule: `ip rule pref 11000 fwmark 0x1000000/0x1000000 lookup 110`.
   - Route table 110: `ip route add local 0.0.0.0/0 dev lo table 110`.
 - **Anti-Leak Guard (`MH_GUARD`)**:
-  - In iptables `filter` FORWARD chain, `MH_GUARD` rejects any unproxied public traffic from LAN clients if the core is stopped, preventing privacy leaks.
+  - In iptables `filter` FORWARD chain, `MH_GUARD` returns for private subnets and `chnroute`, but rejects unproxied international traffic if the core proxy terminates.
+- **Kernel TCP Buffer Scaling**:
+  - Automatically tuned in `firewall-start` (`rmem_max`/`wmem_max` = 16MB, TCP Fast Open = 3) to eliminate Bandwidth-Delay Product (BDP) bottlenecks on cross-border links.
 
 ### C. Zero-Downtime Hot Reload
 - Updating nodes or subscriptions does **not** restart the service.

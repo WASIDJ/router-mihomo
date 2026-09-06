@@ -148,7 +148,34 @@ def main():
     config['dns'] = dict(config.get('dns', {}))
     config['dns'].update({'listen': '0.0.0.0:1053', 'ipv6': False})
     filters = list(config['dns'].get('fake-ip-filter', []))
-    for pattern in ['*.lan', '*.local', 'localhost', '*.ts.net', 'router.asus.com', 'www.asusrouter.com']:
+    default_filters = [
+        '*.lan', '*.local', 'localhost', '*.ts.net', 'router.asus.com', 'www.asusrouter.com',
+        # China Top-level domains & Education/Gov
+        '+.cn', '+.com.cn', '+.net.cn', '+.org.cn', '+.edu.cn', '+.gov.cn',
+        # Major domestic services, clouds & search engines
+        '+.baidu.com', '+.bdimg.com', '+.baidupcs.com', '+.hao123.com',
+        '+.aliyun.com', '+.taobao.com', '+.tmall.com', '+.alipay.com', '+.alicdn.com', '+.dingtalk.com', '+.alibabacloud.com', '+.tbcdn.cn',
+        '+.qq.com', '+.tencent.com', '+.qpic.cn', '+.gtimg.cn', '+.wechat.com', '+.weixin.qq.com', '+.tencent-cloud.net',
+        '+.bilibili.com', '+.bilivideo.com', '+.hdslb.com', '+.biliapi.net',
+        '+.bytedance.com', '+.byteimg.com', '+.douyin.com', '+.toutiao.com', '+.feishu.cn', '+.pstatp.com', '+.douyinpic.com', '+.douyinvod.com',
+        '+.jd.com', '+.360buyimg.com', '+.jdcloud.com',
+        '+.163.com', '+.126.net', '+.netease.com', '+.ydstatic.com',
+        '+.meituan.com', '+.dianping.com', '+.sankuai.com',
+        '+.weibo.com', '+.sina.com.cn', '+.sinaimg.cn', '+.sina.cn',
+        '+.kuaishou.com', '+.yximgs.com',
+        '+.xiaohongshu.com', '+.xhscdn.com',
+        '+.zhihu.com', '+.zhimg.com',
+        '+.sohu.com', '+.sohucs.com',
+        '+.iqiyi.com', '+.qiyi.com', '+.71edge.com',
+        '+.youku.com', '+.ykimg.com',
+        '+.speedtest.cn', '+.test-ipv6.com',
+        # China Apple / Microsoft / Steam CDN
+        '+.apple.com.cn', '+.icloud.com.cn', '+.azure.cn', '+.msftconnecttest.com',
+        '+.steamcontent.com', '+.cm.steampowered.com',
+        # Domestic CDNs
+        '+.qiniu.com', '+.qiniucdn.com', '+.upaiyun.com', '+.volces.com', '+.ucloud.cn'
+    ]
+    for pattern in default_filters:
         if pattern not in filters:
             filters.append(pattern)
     config['dns']['fake-ip-filter'] = filters
@@ -198,6 +225,10 @@ def main():
     for name in ['service.sh', 'firewall.sh', 'event.sh', 'stop-event.sh']:
         shutil.copy2(ROOT / 'router' / name, release / name)
         (release / name).chmod(0o700)
+
+    if (ROOT / 'router' / 'chnroute.txt').exists():
+        shutil.copy2(ROOT / 'router' / 'chnroute.txt', release / 'chnroute.txt')
+        (release / 'chnroute.txt').chmod(0o644)
 
     (release / 'config.yaml').write_text(yaml.safe_dump(config, allow_unicode=True, sort_keys=False))
     shutil.copy2(ROOT / 'router' / 'clients.txt', release / 'clients.txt')

@@ -61,9 +61,23 @@ def hot_reload_api() -> bool:
         print(f"Hot-reload API returned: {e}")
         return False
 
+def ensure_firewall_hooks():
+    firewall_start_content = (ROOT / 'router/firewall-start').read_text()
+    ssh('cat > /tmp/firewall-start.candidate && cp /tmp/firewall-start.candidate /jffs/scripts/firewall-start && chmod 700 /jffs/scripts/firewall-start && rm -f /tmp/firewall-start.candidate', firewall_start_content.encode())
+
 def fast_deploy():
-    """Fast-track: update only config.yaml and trigger API hot-reload (< 1s)."""
-    print(f"[*] Fast deploying config to {TARGET}...")
+    """Fast-track: update config.yaml, firewall scripts, chnroute and trigger API hot-reload."""
+    print(f"[*] Fast deploying to {TARGET}...")
+    
+    # Sync firewall scripts & chnroute if updated
+    if (ROOT / 'build/mihomo/chnroute.txt').exists():
+        ssh('cat > /jffs/mihomo/chnroute.txt.new && mv /jffs/mihomo/chnroute.txt.new /jffs/mihomo/chnroute.txt && chmod 644 /jffs/mihomo/chnroute.txt', (ROOT / 'build/mihomo/chnroute.txt').read_bytes())
+    if (ROOT / 'build/mihomo/firewall.sh').exists():
+        ssh('cat > /jffs/mihomo/firewall.sh.new && mv /jffs/mihomo/firewall.sh.new /jffs/mihomo/firewall.sh && chmod 700 /jffs/mihomo/firewall.sh', (ROOT / 'build/mihomo/firewall.sh').read_bytes())
+
+    ensure_firewall_hooks()
+    ssh('/jffs/scripts/firewall-start')
+
     config_bytes = (ROOT / 'build/mihomo/config.yaml').read_bytes()
     ssh('cat > /tmp/mihomo/config.candidate.yaml', config_bytes)
     
@@ -104,9 +118,11 @@ if [ ! -d /jffs/mihomo ]; then
 else
   cp /jffs/mihomo/config.yaml /jffs/mihomo/config.previous.yaml 2>/dev/null || true
   cp /jffs/mihomo/clients.txt /jffs/mihomo/clients.previous.txt 2>/dev/null || true
-  for file in config.yaml clients.txt service.sh firewall.sh event.sh stop-event.sh manifest.json; do
-    cp /tmp/mihomo-stage/mihomo/$file /jffs/mihomo/$file.new
-    mv /jffs/mihomo/$file.new /jffs/mihomo/$file
+  for file in config.yaml clients.txt service.sh firewall.sh event.sh stop-event.sh manifest.json chnroute.txt; do
+    if [ -f /tmp/mihomo-stage/mihomo/$file ]; then
+      cp /tmp/mihomo-stage/mihomo/$file /jffs/mihomo/$file.new
+      mv /jffs/mihomo/$file.new /jffs/mihomo/$file
+    fi
   done
   cp -a /tmp/mihomo-stage/mihomo/artifacts/* /jffs/mihomo/artifacts/ 2>/dev/null || true
 fi
@@ -119,16 +135,7 @@ done
 [ -d /koolshare/init.d ] && ln -sf /jffs/mihomo/stop-event.sh /koolshare/init.d/T99mihomo.sh
 ''')
 
-    # firewall-start idempotent injection
-    existing = ssh('cat /jffs/scripts/firewall-start 2>/dev/null || true')
-    call_line = '/jffs/mihomo/service.sh firewall'
-    if call_line not in existing:
-        ssh(f'''
-mkdir -p /jffs/scripts
-echo '#!/bin/sh' >> /jffs/scripts/firewall-start
-echo '{call_line}' >> /jffs/scripts/firewall-start
-chmod 700 /jffs/scripts/firewall-start
-''')
+    ensure_firewall_hooks()
 
     try:
         print(ssh('/jffs/mihomo/service.sh restart; sleep 2; /jffs/mihomo/service.sh status'))
