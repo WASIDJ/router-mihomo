@@ -57,6 +57,15 @@ case "${1:-apply}" in
     ;;
 esac
 
+# Kernel TCP / network buffer tuning for high-throughput & BDP scaling
+echo 16777216 > /proc/sys/net/core/rmem_max 2>/dev/null || true
+echo 16777216 > /proc/sys/net/core/wmem_max 2>/dev/null || true
+echo "4096 87380 16777216" > /proc/sys/net/ipv4/tcp_rmem 2>/dev/null || true
+echo "4096 65536 16777216" > /proc/sys/net/ipv4/tcp_wmem 2>/dev/null || true
+echo 2048 > /proc/sys/net/core/somaxconn 2>/dev/null || true
+echo 4096 > /proc/sys/net/core/netdev_max_backlog 2>/dev/null || true
+echo 3 > /proc/sys/net/ipv4/tcp_fastopen 2>/dev/null || true
+
 modprobe xt_TPROXY 2>/dev/null || true
 modprobe xt_socket 2>/dev/null || true
 modprobe xt_set 2>/dev/null || true

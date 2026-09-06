@@ -2,13 +2,14 @@
 # Managed by router-mihomo; existing KoolShare entry points preserved.
 
 # Kernel TCP / network buffer tuning for high-throughput & BDP scaling
-sysctl -w net.core.rmem_max=16777216 >/dev/null 2>&1 || true
-sysctl -w net.core.wmem_max=16777216 >/dev/null 2>&1 || true
-sysctl -w net.ipv4.tcp_rmem="4096 87380 16777216" >/dev/null 2>&1 || true
-sysctl -w net.ipv4.tcp_wmem="4096 65536 16777216" >/dev/null 2>&1 || true
-sysctl -w net.core.somaxconn=2048 >/dev/null 2>&1 || true
-sysctl -w net.core.netdev_max_backlog=4096 >/dev/null 2>&1 || true
-sysctl -w net.ipv4.tcp_fastopen=3 >/dev/null 2>&1 || true
+# Note: Asuswrt-Merlin BusyBox does not provide sysctl binary; write directly to /proc/sys
+echo 16777216 > /proc/sys/net/core/rmem_max 2>/dev/null || true
+echo 16777216 > /proc/sys/net/core/wmem_max 2>/dev/null || true
+echo "4096 87380 16777216" > /proc/sys/net/ipv4/tcp_rmem 2>/dev/null || true
+echo "4096 65536 16777216" > /proc/sys/net/ipv4/tcp_wmem 2>/dev/null || true
+echo 2048 > /proc/sys/net/core/somaxconn 2>/dev/null || true
+echo 4096 > /proc/sys/net/core/netdev_max_backlog 2>/dev/null || true
+echo 3 > /proc/sys/net/ipv4/tcp_fastopen 2>/dev/null || true
 
 /jffs/mihomo/service.sh firewall
 
