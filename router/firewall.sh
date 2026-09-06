@@ -76,7 +76,7 @@ ipset create "$CHN_SET" hash:net family inet hashsize 8192 maxelem 65536 -exist
 
 ipset create mh_next hash:net family inet -exist
 ipset flush mh_next
-while read -r client; do
+while read -r client || [ -n "$client" ]; do
   case "$client" in ''|'#'*) continue;; esac
   # Only LAN client addresses are accepted, never arbitrary shell text.
   case "$client" in 192.168.50.*) ipset add mh_next "$client" -exist;; *) exit 1;; esac
